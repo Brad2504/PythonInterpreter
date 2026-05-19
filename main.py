@@ -5,8 +5,13 @@ from parser import Parser
 from eval import Evaluator
 import readline
 import os
+import platform
 import sys
 import atexit
+
+current_os = platform.system()
+
+clear_arg = "cls" if current_os == "Windows" else "clear"
 
 evaluator = Evaluator([])
 
@@ -31,16 +36,32 @@ def run_code(code):
 if __name__ == "__main__":
     while True:
         try:
-            line = input("\033[34m" + ">>> " + "\033[0m")
+            try:
+                line = input("\033[34m" + ">>> " + "\033[0m")
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                continue
+
             if line.strip() == "exit":
                 break
+
+            if line.strip() == "clear":
+                os.system(clear_arg)
+                continue
 
             # If the line starts a block (ends with ':'), read subsequent
             # indented lines until a blank line is entered.
             if line.rstrip().endswith(":"):
                 lines = [line]
+                aborted = False
                 while True:
-                    next_line = input("\033[34m" + "... " + "\033[0m")
+                    try:
+                        next_line = input("\033[34m" + "... " + "\033[0m")
+                    except KeyboardInterrupt:
+                        print("KeyboardInterrupt")
+                        aborted = True
+                        break
+
                     if next_line == "":
                         break
 
@@ -57,20 +78,29 @@ if __name__ == "__main__":
 
                     lines.append(next_line)
 
+                if aborted:
+                    continue
+
                 code = "\n".join(lines) + "\n"
             else:
                 code = line.lstrip() + "\n"
             
             code = code.encode().decode('unicode_escape')
 
-            result = run_code(code)
+            try:
+                result = run_code(code)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                continue
 
-            # if result is None:
-            #     pass
-            # elif isinstance(result, list):
-            #     if result and any(x is not None for x in result):
-            #         print(result)
-            # else:
-            #     print(result)
+            if result is None:
+                pass
+            elif isinstance(result, list):
+                if result and all(x is not None for x in result):
+                    for result in result:
+                        print(result)
+            else:
+                print(result)
+
         except Exception as e:
             print(f"Error: {e}")

@@ -31,6 +31,7 @@ class Lexer:
             ('COMMA',    r','),              # Comma
             ('FSTRING_DQ', r'f"(?:\\.|[^"\\])*"'),  # f"..."
             ('FSTRING_SQ', r"f'(?:\\.|[^'\\])*'"),    # f'...'
+            ('BOOLEAN',   r'\bTrue\b|\bFalse\b'),  # Boolean literals
             ('IDENT',    r'[A-Za-z_]\w*'),   # Identifiers
             ('DOUBLEQUOTE',    r'"(?:\\.|[^"\\])*"'),  # Double-quoted string
             ('SINGLEQUOTE',    r"'(?:\\.|[^'\\])*'"),  # Single-quoted string
@@ -50,7 +51,7 @@ class Lexer:
                 continue  # Ignore whitespace
             elif kind == 'MISMATCH':
                 raise RuntimeError(f'Unexpected character: {value}')
-            elif kind in ('OP', 'LPAREN', 'RPAREN', 'NEWLINE', 'IDENT', 'CONDITIONAL', 'COMMENT', 'COLON', 'TAB', 'ASSIGN', 'FUNCTION', 'DEF', 'RETURN', 'COMMA', 'PRINT', 'DOUBLEQUOTE', 'SINGLEQUOTE', 'PLUSEQUALS', 'MINUSEQUALS', 'STAREQUALS', 'SLASHEQUALS'):
+            elif kind in ('OP', 'LPAREN', 'RPAREN', 'NEWLINE', 'IDENT', 'CONDITIONAL', 'COMMENT', 'COLON', 'TAB', 'ASSIGN', 'FUNCTION', 'DEF', 'RETURN', 'COMMA', 'PRINT', 'DOUBLEQUOTE', 'SINGLEQUOTE', 'PLUSEQUALS', 'MINUSEQUALS', 'STAREQUALS', 'SLASHEQUALS', 'BOOLEAN'):
                 pass  # Keep as string
             self.tokens.append((kind, value))
         return self.tokens

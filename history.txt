@@ -200,3 +200,37 @@ hello = 5
 print(hello)
 clear()
 exit
+While True:
+	print(1)
+exit
+while True:
+	print(1)
+exit
+clear()
+while True:
+	print(1)
+while True:
+	print(1)
+clear()
+exit
+clear()
+while True:
+	print(1)
+exit
+clear()
+exit
+if True:
+	20
+	30
+exit
+if True:
+	20
+	30
+exit()
+clear
+clear()
+exit
+clear
+exit
+clear
+exit

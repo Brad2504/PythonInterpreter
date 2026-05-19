@@ -319,7 +319,7 @@ class Evaluator:
         return results
     
     def eval_while_loop(self, cond_expr, body_start, body_end):
-        if cond_expr[0] != "binop":
+        if cond_expr[0] not in ("binop", "inlinecond", "call", "ident", "number", "string", "boolean", "fstring", "list"):
             raise RuntimeError("Expected binary expression as while loop condition")
 
         results = []
@@ -426,6 +426,8 @@ class Evaluator:
             return ''.join(parts)
         elif expr[0] == "list":
             return [self.eval_expr(item) for item in expr[1]]
+        elif expr[0] == "boolean":
+            return expr[1]
         # elif expr[0] == "print":
         #     value = self.eval_expr(expr[1])
         #     print(value)

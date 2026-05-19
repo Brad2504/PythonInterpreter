@@ -211,6 +211,9 @@ class Parser:
 
         if tokens[0][0] == "NUMBER":
             return ("number", tokens[0][1])
+
+        if tokens[0][0] == "BOOLEAN":
+            return ("boolean", tokens[0][1] == "True")
         
         if tokens[0][0] in ("DOUBLEQUOTE", "SINGLEQUOTE"):
             return ("string", tokens[0][1][1:-1]) 
