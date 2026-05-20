@@ -1,13 +1,22 @@
 # Main entry point for the Python interpreter
 
-from lexer import Lexer
-from parser import Parser
-from eval import Evaluator
+from pyinterp.lexer import Lexer
+from pyinterp.parser import Parser
+from pyinterp.eval import Evaluator
 import readline
 import os
 import platform
 import sys
 import atexit
+import argparse
+import pytest
+from pathlib import Path
+
+MAIN_PROMPT = "\x01\033[1;35m\x02>>>\x01\033[0m\x02 "
+CONT_PROMPT = "\x01\033[1;35m\x02...\x01\033[0m\x02 "
+HISTORY_FILE = os.path.expanduser("~/.pyinterp_history")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+TEST_DIR = PROJECT_ROOT / "tests"
 
 current_os = platform.system()
 
@@ -15,12 +24,10 @@ clear_arg = "cls" if current_os == "Windows" else "clear"
 
 evaluator = Evaluator([])
 
-history_file = "history.txt"
-
-atexit.register(readline.write_history_file, history_file)
+atexit.register(readline.write_history_file, HISTORY_FILE)
 
 try:
-    readline.read_history_file(history_file)
+    readline.read_history_file(HISTORY_FILE)
 except FileNotFoundError:
     pass
 
@@ -33,11 +40,30 @@ def run_code(code):
 
     return evaluator.eval()
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-t",
+        "--test",
+        action="store_true",
+        help="Run unit tests"
+    )
+
+    args = parser.parse_args()
+
+    if args.test:
+        raise SystemExit(pytest.main([str(TEST_DIR)]))
+
+    print("*********************** Python Interpreter, version 1.0, by Brayden Clark ***********************")
+    print("****** Welcome to the Python Interpreter! Type 'exit' to quit, 'clear' to clear the screen ******")
+
+    depth = 0
+
     while True:
         try:
             try:
-                line = input("\033[34m" + ">>> " + "\033[0m")
+                line = input(MAIN_PROMPT)
             except KeyboardInterrupt:
                 print("KeyboardInterrupt")
                 continue
@@ -47,22 +73,32 @@ if __name__ == "__main__":
 
             if line.strip() == "clear":
                 os.system(clear_arg)
+                print("*********************** Python Interpreter, version 1.0, by Brayden Clark ***********************")
+                print("****** Welcome to the Python Interpreter! Type 'exit' to quit, 'clear' to clear the screen ******")
                 continue
 
             # If the line starts a block (ends with ':'), read subsequent
             # indented lines until a blank line is entered.
             if line.rstrip().endswith(":"):
+                depth += 1
                 lines = [line]
                 aborted = False
                 while True:
+                    readline.set_startup_hook(lambda d=depth: readline.insert_text("    " * d))
                     try:
-                        next_line = input("\033[34m" + "... " + "\033[0m")
+                        next_line = input(CONT_PROMPT)
                     except KeyboardInterrupt:
                         print("KeyboardInterrupt")
                         aborted = True
                         break
+                    finally:
+                        readline.set_startup_hook(None)
 
-                    if next_line == "":
+                    if next_line.rstrip().endswith(":"):
+                        depth += 1
+
+                    if next_line.strip() == "":
+                        depth = 0
                         break
 
                     # Normalize leading groups of 4 spaces into tabs so the

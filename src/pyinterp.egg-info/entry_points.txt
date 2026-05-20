@@ -1,0 +1,2 @@
+[console_scripts]
+pyinterp = pyinterp.interpreter:main

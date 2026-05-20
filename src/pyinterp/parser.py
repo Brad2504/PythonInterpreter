@@ -1,6 +1,6 @@
 # Python Parser
 
-from lexer import Lexer as Lexer
+from pyinterp.lexer import Lexer as Lexer
 
 class Parser:
     def __init__(self, tokens):

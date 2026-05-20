@@ -1,7 +1,7 @@
 import unittest
 
-from lexer import Lexer
-from parser import Parser
+from pyinterp.lexer import Lexer
+from pyinterp.parser import Parser
 
 
 class ParserTests(unittest.TestCase):

@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/pyinterp/__init__.py
+src/pyinterp/eval.py
+src/pyinterp/interpreter.py
+src/pyinterp/lexer.py
+src/pyinterp/parser.py
+src/pyinterp.egg-info/PKG-INFO
+src/pyinterp.egg-info/SOURCES.txt
+src/pyinterp.egg-info/dependency_links.txt
+src/pyinterp.egg-info/entry_points.txt
+src/pyinterp.egg-info/requires.txt
+src/pyinterp.egg-info/top_level.txt
+tests/test_eval.py
+tests/test_lexer.py
+tests/test_parser.py

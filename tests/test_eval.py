@@ -1,8 +1,8 @@
 import unittest
 
-from eval import Evaluator
-from lexer import Lexer
-from parser import Parser
+from pyinterp.eval import Evaluator
+from pyinterp.lexer import Lexer
+from pyinterp.parser import Parser
 
 
 class EvaluatorTests(unittest.TestCase):

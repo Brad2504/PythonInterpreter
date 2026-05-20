@@ -1,6 +1,6 @@
 import unittest
 
-from lexer import Lexer
+from pyinterp.lexer import Lexer
 
 
 class LexerTests(unittest.TestCase):

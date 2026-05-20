@@ -25,9 +25,9 @@ class Lexer:
             ('FOR'     , r'for'),            # For loop keyword
             ('IN'      , r'in'),             # In keyword for loops
             ('WHILE'   , r'while'),          # While loop keyword
+            ('RETURN',   r'return'),         # Return statement keyword
             ('FUNCTION', r'[A-Za-z_]\w*(?=\()'),  # Function names (identifiers followed by a parenthesis)
             ('DEF',      r'def'),            # Function definition keyword
-            ('RETURN',   r'return'),         # Return statement keyword
             ('COMMA',    r','),              # Comma
             ('FSTRING_DQ', r'f"(?:\\.|[^"\\])*"'),  # f"..."
             ('FSTRING_SQ', r"f'(?:\\.|[^'\\])*'"),    # f'...'
