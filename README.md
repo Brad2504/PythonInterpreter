@@ -44,7 +44,7 @@ To run the code:
 pyinterp
 ```
 
-git rm -r --cached __pycache__
+![PyInterp Screenshot](images/demo.png)
 
 To test the code:
 
@@ -54,5 +54,7 @@ pyinterp -t
 ```bash
 pyinterp --test
 ```
+
+![PyInterp Screenshot](images/testdemo.png)
 
 For more usage check tests for examples
