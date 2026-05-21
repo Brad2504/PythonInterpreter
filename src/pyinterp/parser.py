@@ -84,6 +84,23 @@ class Parser:
         
         return pos_cond_word, condition_tokens
 
+    def split_on_last_top_level_dot(self, tokens):
+        depth = 0
+        last_dot = None
+
+        for pos, token in enumerate(tokens):
+            if token[0] == "LPAREN":
+                depth += 1
+            elif token[0] == "RPAREN":
+                depth -= 1
+            elif token[0] == "DOT" and depth == 0:
+                last_dot = pos
+
+        if last_dot is None:
+            return None, None
+
+        return tokens[:last_dot], tokens[last_dot + 1:]
+
     def parse_expr(self, tokens):
         if len(tokens) == 0:
             raise RuntimeError("Unexpected end of expression")
@@ -109,6 +126,65 @@ class Parser:
 
         #     return ("print", self.parse_expr(text_tokens))
 
+        if tokens[0][0] == "IMPORT":
+            if len(tokens) < 2:
+                raise RuntimeError("Expected module name after 'import'")
+
+            module_parts = []
+            as_name = None
+            pos = 1
+            while pos < len(tokens):
+                if tokens[pos][0] == "AS":
+                    if pos + 1 >= len(tokens) or tokens[pos + 1][0] != "IDENT":
+                        raise RuntimeError("Expected alias name after 'as' in import statement")
+                    as_name = tokens[pos + 1][1]
+                    break
+                if tokens[pos][0] == "IDENT":
+                    module_parts.append(tokens[pos][1])
+                elif tokens[pos][0] == "DOT":
+                    module_parts.append(".")
+                else:
+                    raise RuntimeError("Expected module name after 'import'")
+                pos += 1
+
+            module_name = "".join(module_parts)
+            if as_name:
+                return ("import", module_name, as_name)
+            return ("import", module_name)
+        
+        if tokens[0][0] == "FROM":
+            if len(tokens) < 4:
+                raise RuntimeError("Expected syntax: from <module> import <name>")
+            
+            module_parts = []
+            pos = 1
+            while pos < len(tokens) and tokens[pos][0] != "IMPORT":
+                if tokens[pos][0] == "IDENT":
+                    module_parts.append(tokens[pos][1])
+                elif tokens[pos][0] == "DOT":
+                    module_parts.append(".")
+                else:
+                    raise RuntimeError("Expected syntax: from <module> import <name>")
+                pos += 1
+
+            if pos >= len(tokens) or tokens[pos][0] != "IMPORT":
+                raise RuntimeError("Expected syntax: from <module> import <name>")
+
+            module_name = "".join(module_parts)
+
+            if pos + 1 >= len(tokens) or tokens[pos + 1][0] != "IDENT":
+                raise RuntimeError("Expected syntax: from <module> import <name>")
+
+            name = tokens[pos + 1][1]
+
+            if pos + 2 < len(tokens) and tokens[pos + 2][0] == "AS":
+                if pos + 3 >= len(tokens) or tokens[pos + 3][0] != "IDENT":
+                    raise RuntimeError("Expected alias name after 'as' in from-import statement")
+                as_name = tokens[pos + 3][1]
+                return ("from_import", module_name, name, as_name)
+
+            return ("from_import", module_name, name)
+
         if tokens[0][0] == "FOR":
             if tokens[1][0] != "IDENT" or tokens[2][0] != "IN":
                 raise RuntimeError("Expected syntax: for <var> in <iterable>")
@@ -119,7 +195,13 @@ class Parser:
         if tokens[0][0] == "WHILE":
             condition_tokens = tokens[1:]
             return ("while", self.parse_expr(condition_tokens))
-        
+
+        if len(tokens) > 3 and tokens[0][0] == "IDENT" and tokens[1][0] == "DOT" and tokens[2][0] == "IDENT" and tokens[3][0] == "ASSIGN":
+            obj_name = tokens[0][1]
+            attr_name = tokens[2][1]
+            value_tokens = tokens[4:]
+            return ("set_attr", obj_name, attr_name, self.parse_expr(value_tokens))
+
         if tokens[0][0] == "DEF" and len(tokens) > 1 and tokens[1][0] == "FUNCTION":
             func_name = tokens[1][1]
             if len(tokens) < 4 or tokens[2][0] != "LPAREN":
@@ -140,7 +222,90 @@ class Parser:
                 raise RuntimeError("Expected closing parenthesis in function definition")
             
             return ("def", func_name, params)
+
+        if tokens[0][0] == "CONDITIONAL":
+            pos_cond_word, condition_tokens = self.split_multiline_conditionals(tokens)
+            if condition_tokens:
+                return (pos_cond_word, self.parse_expr(condition_tokens))
+            else:
+                return (pos_cond_word, None)
+            
+        if tokens[0][0] == "RETURN":
+            if len(tokens) == 1:
+                return ("return", None)
+            return ("return", self.parse_expr(tokens[1:]))
+
+        if tokens[0][0] == "CLASS":
+            if len(tokens) < 2 or tokens[1][0] != "IDENT":
+                raise RuntimeError("Expected class name after 'class'")
+
+            class_name = tokens[1][1]
+            return ("class_def", class_name)
+
+        true_tokens, condition_tokens, false_tokens = self.split_inline_conditionals(tokens)
+        if true_tokens is not None:
+            return ("inlinecond", self.parse_expr(condition_tokens), self.parse_expr(true_tokens), self.parse_expr(false_tokens))
+
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["and", "or"])
+        if operator is not None:
+            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
+
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["<", ">", "<=", ">=", "==", "!="])
+        if operator is not None:
+            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
         
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["+", "-"])
+        if operator is not None:
+            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
+
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["*", "/"])
+        if operator is not None:   
+            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
+
+        left_tokens, right_tokens = self.split_on_last_top_level_dot(tokens)
+        if left_tokens is not None:
+            left_expr = self.parse_expr(left_tokens)
+
+            if not right_tokens:
+                raise RuntimeError("Expected attribute name after '.'")
+
+            if right_tokens[0][0] not in ("IDENT", "FUNCTION"):
+                raise RuntimeError("Expected attribute name after '.'")
+
+            attr_name = right_tokens[0][1]
+
+            if len(right_tokens) > 1 and right_tokens[1][0] == "LPAREN":
+                args = []
+                pos = 2
+                arg_start = pos
+                depth = 0
+
+                while pos < len(right_tokens):
+                    tk = right_tokens[pos]
+                    if tk[0] == "LPAREN":
+                        depth += 1
+                    elif tk[0] == "RPAREN":
+                        if depth == 0:
+                            if pos > arg_start:
+                                args.append(self.parse_expr(right_tokens[arg_start:pos]))
+                            break
+                        depth -= 1
+                    elif tk[0] == "COMMA" and depth == 0:
+                        if pos > arg_start:
+                            args.append(self.parse_expr(right_tokens[arg_start:pos]))
+                        arg_start = pos + 1
+                    pos += 1
+
+                if pos >= len(right_tokens) or right_tokens[pos][0] != "RPAREN":
+                    raise RuntimeError("Expected closing parenthesis in attribute call")
+
+                return ("call", ("get_attr", left_expr, attr_name), args)
+
+            if len(right_tokens) == 1:
+                return ("get_attr", left_expr, attr_name)
+
+            raise RuntimeError("Unexpected token sequence after attribute access")
+
         if tokens[0][0] in ("IDENT", "FUNCTION") and len(tokens) > 1 and tokens[1][0] == "LPAREN":
             func_name = tokens[0][1]
             args = []
@@ -169,39 +334,7 @@ class Parser:
             if pos >= len(tokens) or tokens[pos][0] != "RPAREN":
                 raise RuntimeError("Expected closing parenthesis in function call")
 
-            return ("call", func_name, args)
-
-        if tokens[0][0] == "CONDITIONAL":
-            pos_cond_word, condition_tokens = self.split_multiline_conditionals(tokens)
-            if condition_tokens:
-                return (pos_cond_word, self.parse_expr(condition_tokens))
-            else:
-                return (pos_cond_word, None)
-            
-        if tokens[0][0] == "RETURN":
-            if len(tokens) == 1:
-                return ("return", None)
-            return ("return", self.parse_expr(tokens[1:]))
-
-        true_tokens, condition_tokens, false_tokens = self.split_inline_conditionals(tokens)
-        if true_tokens is not None:
-            return ("inlinecond", self.parse_expr(condition_tokens), self.parse_expr(true_tokens), self.parse_expr(false_tokens))
-
-        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["and", "or"])
-        if operator is not None:
-            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
-
-        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["<", ">", "<=", ">=", "==", "!="])
-        if operator is not None:
-            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
-        
-        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["+", "-"])
-        if operator is not None:
-            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
-
-        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["*", "/"])
-        if operator is not None:   
-            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
+            return ("call", ("ident", func_name), args)
 
         if tokens[0][0] == "LPAREN":
             return self.parse_paran(tokens)

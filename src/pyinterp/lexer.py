@@ -10,6 +10,7 @@ class Lexer:
     def tokenize(self):
         token_specification = [
             ('NUMBER',   r'\d+(\.\d*)?'),    # Integer or decimal number
+            ('DOT',      r'\.'),             # Dot operator for attribute access
             ('LIST',     r'\[.*?\]'),         # List literals (non-greedy match)
             ('LPAREN',   r'\('),             # Left parenthesis
             ('RPAREN',   r'\)'),             # Right parenthesis
@@ -21,10 +22,14 @@ class Lexer:
             ('COLON',    r':'),              # Colon
             ('CONDITIONAL', r'if|else|elif'),     # Conditional keywords
             ('ASSIGN',   r'='),              # Assignment operator
+            ('CLASS',    r'class'),          # Class definition keyword
             # ('PRINT',    r'print\('),        # Print token includes opening parenthesis
             ('FOR'     , r'for'),            # For loop keyword
             ('IN'      , r'in'),             # In keyword for loops
             ('WHILE'   , r'while'),          # While loop keyword
+            ('IMPORT',  r'import'),         # import keyword
+            ('FROM',    r'from'),           # from keyword
+            ('AS',      r'as'),             # as keyword for imports
             ('RETURN',   r'return'),         # Return statement keyword
             ('FUNCTION', r'[A-Za-z_]\w*(?=\()'),  # Function names (identifiers followed by a parenthesis)
             ('DEF',      r'def'),            # Function definition keyword
@@ -51,7 +56,7 @@ class Lexer:
                 continue  # Ignore whitespace
             elif kind == 'MISMATCH':
                 raise RuntimeError(f'Unexpected character: {value}')
-            elif kind in ('OP', 'LPAREN', 'RPAREN', 'NEWLINE', 'IDENT', 'CONDITIONAL', 'COMMENT', 'COLON', 'TAB', 'ASSIGN', 'FUNCTION', 'DEF', 'RETURN', 'COMMA', 'PRINT', 'DOUBLEQUOTE', 'SINGLEQUOTE', 'PLUSEQUALS', 'MINUSEQUALS', 'STAREQUALS', 'SLASHEQUALS', 'BOOLEAN'):
+            elif kind in ('OP', 'LPAREN', 'RPAREN', 'NEWLINE', 'IDENT', 'CONDITIONAL', 'COMMENT', 'COLON', 'TAB', 'ASSIGN', 'FUNCTION', 'DEF', 'RETURN', 'COMMA', 'PRINT', 'DOUBLEQUOTE', 'SINGLEQUOTE', 'PLUSEQUALS', 'MINUSEQUALS', 'STAREQUALS', 'SLASHEQUALS', 'BOOLEAN', 'DOT', 'AS'):
                 pass  # Keep as string
             self.tokens.append((kind, value))
         return self.tokens

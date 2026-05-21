@@ -40,6 +40,40 @@ def run_code(code):
 
     return evaluator.eval()
 
+
+def normalize_code(code: str) -> str:
+    """Normalize code read from files or multi-line input:
+    - Convert groups of 4 leading spaces to tabs to match REPL behavior
+    - Normalize line endings to LF
+    - Decode escape sequences (unicode_escape)
+    """
+    # Normalize CRLF to LF
+    code = code.replace('\r\n', '\n').replace('\r', '\n')
+
+    lines = code.split('\n')
+    normalized_lines = []
+
+    for line in lines:
+        if not line:
+            normalized_lines.append(line)
+            continue
+
+        # Count leading spaces (but prefer existing tabs)
+        leading_spaces = len(line) - len(line.lstrip(' '))
+        if leading_spaces > 0 and (line.lstrip(' ')[0:1] != "\t"):
+            if leading_spaces % 4 != 0:
+                raise RuntimeError("Indentation error: expected multiples of 4 spaces in file input")
+            tabs = leading_spaces // 4
+            remainder = line.lstrip(' ')
+            normalized_lines.append("\t" * tabs + remainder)
+        else:
+            normalized_lines.append(line)
+
+    normalized = "\n".join(normalized_lines)
+    # Decode escape sequences (so file contents containing "\\n" become real newlines)
+    normalized = normalized.encode().decode('unicode_escape')
+    return normalized
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -50,10 +84,24 @@ def main():
         help="Run unit tests"
     )
 
+    parser.add_argument(
+        "-f",
+        "--file",
+        type=str,
+        help="Run a Python file instead of starting the REPL"
+    )
+
     args = parser.parse_args()
 
     if args.test:
         raise SystemExit(pytest.main([str(TEST_DIR)]))
+    
+    if args.file:
+        with open(args.file, "r") as f:
+            code = f.read()
+            code = normalize_code(code)
+            result = run_code(code)
+        return
 
     print("*********************** Python Interpreter, version 1.0, by Brayden Clark ***********************")
     print("****** Welcome to the Python Interpreter! Type 'exit' to quit, 'clear' to clear the screen ******")

@@ -1,11 +1,52 @@
 # Python Evaluator
 
 import platform
+from pathlib import Path
 import os
+import importlib
+import types
 
 current_os = platform.system()
 
 clear_arg = "cls" if current_os == "Windows" else "clear"
+
+class Module:
+    def __init__(self, name, scope):
+        self.name = name
+        self.scope = scope
+    
+    def get_attr(self, attr):
+        if attr in self.scope:
+            return self.scope[attr]
+        raise RuntimeError(f"Module '{self.name}' has no attribute '{attr}'")
+
+class Class:
+            def __init__(self, name, scope):
+                self.name = name
+                self.scope = scope
+
+            def instantiate(self):
+                # copy class scope into instance attributes
+                return Object(self.name, dict(self.scope))
+    
+class Object:
+    def __init__(self, type_name, attributes):
+        self.type_name = type_name
+        self.attributes = attributes
+    
+    def get_attr(self, attr):
+        if attr in self.attributes:
+            val = self.attributes[attr]
+            # If the attribute is an interpreter-defined function, bind `self` as first arg
+            if isinstance(val, types.FunctionType):
+                def bound(*args, __val=val, __self=self):
+                    return __val(__self, *args)
+                return bound
+            return val
+        raise RuntimeError(f"Object of type '{self.type_name}' has no attribute '{attr}'")
+    
+    def set_attr(self, attr, value):
+        self.attributes[attr] = value
 
 class Return(Exception):
     def __init__(self, value):
@@ -57,6 +98,8 @@ class Evaluator:
                 index = self.validate_if_chain(index, end, expected_indent)
             elif expr[0] == "def":
                 index = self.validate_function_definition(index, end, expected_indent)
+            elif expr[0] == "class_def":
+                index = self.validate_class_definition(index, end, expected_indent)
             elif expr[0] == "while":
                 index = self.validate_while_loop(index, end, expected_indent)
             elif expr[0] == "for":
@@ -102,6 +145,25 @@ class Evaluator:
         indent, expr = self.expressions[index]
         if indent != expected_indent or expr[0] != "def":
             raise RuntimeError("Indentation error: expected function definition")
+
+        body_start = index + 1
+    
+        if body_start >= end:
+            raise RuntimeError("Indentation error: expected indented block")
+
+        next_indent, _ = self.expressions[body_start]
+        if next_indent != expected_indent + 1:
+            raise RuntimeError("Indentation error: expected indented block")
+        
+        body_end = self.validate_block(body_start, end, expected_indent + 1)
+        return body_end
+
+    def validate_class_definition(self, start, end, expected_indent):
+        index = start
+
+        indent, expr = self.expressions[index]
+        if indent != expected_indent or expr[0] != "class_def":
+            raise RuntimeError("Indentation error: expected class definition")
 
         body_start = index + 1
     
@@ -197,6 +259,19 @@ class Evaluator:
                 index = body_end
             elif expr[0] == "def":
                 index = self.eval_function_definition(index, end)
+            elif expr[0] == "class_def":
+                index = self.eval_class_definition(index, end)
+            elif expr[0] == "import":
+                module_name = expr[1]
+                as_name = expr[2] if len(expr) > 2 else None
+                self.eval_import(module_name, as_name)
+                index += 1
+            elif expr[0] == "from_import":
+                module_name = expr[1]
+                attr_name = expr[2]
+                as_name = expr[3] if len(expr) > 3 else None
+                self.eval_from_import(module_name, attr_name, as_name)
+                index += 1
             elif expr[0] in ("elif", "else"):
                 raise RuntimeError("Unexpected conditional branch without matching if")
             else:
@@ -293,16 +368,56 @@ class Evaluator:
         self.environment[func_name] = function
         return body_end
     
-    def eval_function_call(self, func_name, arg_exprs):
-        if func_name not in self.environment or not callable(self.environment[func_name]):
+    def eval_function_call(self, func_expr, arg_exprs):
+        func = self.eval_expr(func_expr)
+        args = [self.eval_expr(arg) for arg in arg_exprs]
+
+        # Class instantiation
+        if hasattr(func, 'instantiate'):
+            instance = func.instantiate()
+            # Call __init__ if present
+            init = instance.attributes.get('__init__')
+            args = [self.eval_expr(arg) for arg in arg_exprs]
+            if init and callable(init):
+                init(instance, *args)
+            return instance
+
+        if not callable(func):
             raise RuntimeError(f"Undefined function: {func_name}")
-        
+
         try:
-            func = self.environment[func_name]
             args = [self.eval_expr(arg) for arg in arg_exprs]
             return func(*args)
         except Return as r:
             return r.value
+
+    def eval_class_definition(self, start, limit):
+        indent, expr = self.expressions[start]
+        if expr[0] != "class_def":
+            raise RuntimeError("Expected class definition")
+
+        class_name = expr[1]
+        body_start = start + 1
+        body_end = body_start
+
+        while body_end < limit:
+            body_indent, _ = self.expressions[body_end]
+            if body_indent <= indent:
+                break
+            body_end += 1
+
+        class_body = self.expressions[body_start:body_end]
+
+        # Evaluate class body in its own evaluator to collect methods/attrs
+        class_scope = {}
+        class_evaluator = Evaluator(class_body)
+        class_evaluator.environment = {}
+        class_evaluator.eval_range(0, len(class_body))
+        class_scope.update(class_evaluator.environment)
+
+        cls = Class(class_name, class_scope)
+        self.environment[class_name] = cls
+        return body_end
         
     def eval_for_loop(self, var_name, iterable_expr, body_start, body_end):       
         iterable = self.eval_expr(iterable_expr)
@@ -317,7 +432,58 @@ class Evaluator:
 
         del self.environment[var_name]
         return results
+
+    def eval_import(self, module_name, as_name=None):
+        if module_name in self.environment:
+            return self.environment[module_name]
+
+        try:
+            module_scope = importlib.import_module(module_name).__dict__
+            module = Module(module_name, module_scope)
+            self.environment[module_name] = module
+            if as_name:
+                self.environment[as_name] = module
+            return module
+        except ImportError:
+            raise RuntimeError(f"Module '{module_name}' not found")
     
+    def eval_from_import(self, module_name, attr_name, as_name=None):
+        module = self.eval_import(module_name)
+
+        if attr_name not in module.scope:
+            raise RuntimeError(f"Module '{module_name}' has no attribute '{attr_name}'")
+
+        self.environment[attr_name] = module.scope[attr_name]
+        if as_name:
+            self.environment[as_name] = module.scope[attr_name]
+        return module.scope[attr_name]
+
+    def _resolve_attr_on(self, obj, attr_name):
+        """Resolve attribute `attr_name` on an evaluated object `obj`.
+
+        Handles interpreter wrappers (`Module`, `Object`) first, then
+        falls back to Python's `getattr` for native objects. Raises a
+        consistent RuntimeError when the attribute is missing.
+        """
+        if isinstance(obj, Module) or isinstance(obj, Object):
+            return obj.get_attr(attr_name)
+
+        if hasattr(obj, attr_name):
+            return getattr(obj, attr_name)
+
+        raise RuntimeError(f"Object of type '{type(obj).__name__}' has no attribute '{attr_name}'")
+
+    def eval_set_attr(self, obj_name, attr_name, value_expr):
+        if obj_name not in self.environment:
+            raise RuntimeError(f"Undefined variable: {obj_name}")
+
+        obj = self.environment[obj_name]
+
+        if isinstance(obj, Object):
+            obj.set_attr(attr_name, self.eval_expr(value_expr))
+        else:
+            raise RuntimeError(f"Object of type '{type(obj).__name__}' has no attribute '{attr_name}'")
+
     def eval_while_loop(self, cond_expr, body_start, body_end):
         if cond_expr[0] not in ("binop", "inlinecond", "call", "ident", "number", "string", "boolean", "fstring", "list"):
             raise RuntimeError("Expected binary expression as while loop condition")
@@ -408,6 +574,16 @@ class Evaluator:
                 return self.eval_expr(expr[3])
         elif expr[0] == "call":
             return self.eval_function_call(expr[1], expr[2])
+        elif expr[0] == "get_attr":
+            obj = self.eval_expr(expr[1])
+            return self._resolve_attr_on(obj, expr[2])
+        elif expr[0] == "set_attr":
+            obj_name = expr[1]
+            attr_name = expr[2]
+            value_expr = expr[3]
+
+            self.eval_set_attr(obj_name, attr_name, value_expr)
+            return None
         elif expr[0] == "assign":
             var_name = expr[1]
             value = self.eval_expr(expr[2])
