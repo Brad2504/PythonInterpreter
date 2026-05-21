@@ -20,19 +20,19 @@ class Lexer:
             ('SLASHEQUALS', r'/='),           # /= operator
             ('OP',       r'==|!=|<=|>=|[+\-*/<>]|and|or'),  # Operators
             ('COLON',    r':'),              # Colon
-            ('CONDITIONAL', r'if|else|elif'),     # Conditional keywords
+            ('CONDITIONAL', r'\bif\b|\belse\b|\belif\b'),     # Conditional keywords
             ('ASSIGN',   r'='),              # Assignment operator
-            ('CLASS',    r'class'),          # Class definition keyword
+            ('CLASS',    r'\bclass\b'),          # Class definition keyword
             # ('PRINT',    r'print\('),        # Print token includes opening parenthesis
-            ('FOR'     , r'for'),            # For loop keyword
-            ('IN'      , r'in'),             # In keyword for loops
-            ('WHILE'   , r'while'),          # While loop keyword
-            ('IMPORT',  r'import'),         # import keyword
-            ('FROM',    r'from'),           # from keyword
-            ('AS',      r'as'),             # as keyword for imports
-            ('RETURN',   r'return'),         # Return statement keyword
+            ('FOR'     , r'\bfor\b'),            # For loop keyword
+            ('IN'      , r'\bin\b'),             # In keyword for loops
+            ('WHILE'   , r'\bwhile\b'),          # While loop keyword
+            ('IMPORT',  r'\bimport\b'),         # import keyword
+            ('FROM',    r'\bfrom\b'),           # from keyword
+            ('AS',      r'\bas\b'),             # as keyword for imports
+            ('RETURN',   r'\breturn\b'),         # Return statement keyword
             ('FUNCTION', r'[A-Za-z_]\w*(?=\()'),  # Function names (identifiers followed by a parenthesis)
-            ('DEF',      r'def'),            # Function definition keyword
+            ('DEF',      r'\bdef\b'),            # Function definition keyword
             ('COMMA',    r','),              # Comma
             ('FSTRING_DQ', r'f"(?:\\.|[^"\\])*"'),  # f"..."
             ('FSTRING_SQ', r"f'(?:\\.|[^'\\])*'"),    # f'...'

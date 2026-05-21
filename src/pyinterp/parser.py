@@ -299,7 +299,7 @@ class Parser:
                 if pos >= len(right_tokens) or right_tokens[pos][0] != "RPAREN":
                     raise RuntimeError("Expected closing parenthesis in attribute call")
 
-                return ("call", ("get_attr", left_expr, attr_name), args)
+                return ("attr_call", left_expr, attr_name, args)
 
             if len(right_tokens) == 1:
                 return ("get_attr", left_expr, attr_name)

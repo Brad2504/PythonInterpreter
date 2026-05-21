@@ -182,9 +182,9 @@ def main():
             elif isinstance(result, list):
                 if result and all(x is not None for x in result):
                     for result in result:
-                        print(result)
+                        print(repr(result))
             else:
-                print(result)
+                print(repr(result))
 
         except Exception as e:
             print(f"Error: {e}")

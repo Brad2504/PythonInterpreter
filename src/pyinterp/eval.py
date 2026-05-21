@@ -377,16 +377,14 @@ class Evaluator:
             instance = func.instantiate()
             # Call __init__ if present
             init = instance.attributes.get('__init__')
-            args = [self.eval_expr(arg) for arg in arg_exprs]
             if init and callable(init):
                 init(instance, *args)
             return instance
 
         if not callable(func):
             raise RuntimeError(f"Undefined function: {func_name}")
-
+            
         try:
-            args = [self.eval_expr(arg) for arg in arg_exprs]
             return func(*args)
         except Return as r:
             return r.value
@@ -473,11 +471,8 @@ class Evaluator:
 
         raise RuntimeError(f"Object of type '{type(obj).__name__}' has no attribute '{attr_name}'")
 
-    def eval_set_attr(self, obj_name, attr_name, value_expr):
-        if obj_name not in self.environment:
-            raise RuntimeError(f"Undefined variable: {obj_name}")
-
-        obj = self.environment[obj_name]
+    def eval_set_attr(self, obj_expr, attr_name, value_expr):
+        obj = self.eval_expr(obj_expr)
 
         if isinstance(obj, Object):
             obj.set_attr(attr_name, self.eval_expr(value_expr))
@@ -574,15 +569,20 @@ class Evaluator:
                 return self.eval_expr(expr[3])
         elif expr[0] == "call":
             return self.eval_function_call(expr[1], expr[2])
+        elif expr[0] == "attr_call":
+            target = self.eval_expr(expr[1])
+            func = self._resolve_attr_on(target, expr[2])
+
+            if not callable(func):
+                raise RuntimeError(f"Attribute '{expr[2]}' is not callable")
+
+            args = [self.eval_expr(arg) for arg in expr[3]]
+            return func(*args)
         elif expr[0] == "get_attr":
             obj = self.eval_expr(expr[1])
             return self._resolve_attr_on(obj, expr[2])
         elif expr[0] == "set_attr":
-            obj_name = expr[1]
-            attr_name = expr[2]
-            value_expr = expr[3]
-
-            self.eval_set_attr(obj_name, attr_name, value_expr)
+            self.eval_set_attr(expr[1], expr[2], expr[3])
             return None
         elif expr[0] == "assign":
             var_name = expr[1]
