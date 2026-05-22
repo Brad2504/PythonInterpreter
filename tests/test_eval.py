@@ -89,6 +89,22 @@ class EvaluatorTests(unittest.TestCase):
             None,
         )
 
+    def test_tuple_assignment_unpacks_values(self):
+        self.assertEqual(
+            self.eval_code(
+                "a, b = (1, 2)\na + b"
+            ),
+            [None, 3],
+        )
+
+    def test_for_loop_unpacks_tuple_targets(self):
+        self.assertEqual(
+            self.eval_code(
+                "for a, b in [(1, 2), (3, 4)]:\n\ta + b"
+            ),
+            [3, 7],
+        )
+
     def test_string_concatenation_evaluates(self):
         self.assertEqual(self.eval_code('"hello" + \'world\''), "helloworld")
 

@@ -29,6 +29,132 @@ class Parser:
                 expressions.append((indent, self.parse_expr(line[indent:])))
         return expressions
 
+    def parse_stmt(self, tokens):
+        return self.parse_expr(tokens)
+
+    def parse_primary(self, tokens):
+        if not tokens:
+            raise RuntimeError("Unexpected end of expression")
+
+        token_type = tokens[0][0]
+
+        if token_type in ("IDENT", "FUNCTION"):
+            return ("ident", tokens[0][1])
+        if token_type == "NUMBER":
+            return ("number", tokens[0][1])
+        if token_type == "BOOLEAN":
+            return ("boolean", tokens[0][1] == "True")
+        if token_type in ("DOUBLEQUOTE", "SINGLEQUOTE"):
+            return ("string", tokens[0][1][1:-1])
+        if token_type == "LPAREN":
+            close_pos = self.find_matching(tokens, 0, "LPAREN", "RPAREN")
+            tokens_inside = tokens[1:close_pos]
+
+            tuple_elements = self.split_top_level_items(tokens_inside)
+            if len(tuple_elements) > 1:
+                return ("tuple", [self.parse_expr(elem) for elem in tuple_elements])
+            else:
+                return self.parse_paran(tokens)
+        if token_type == "LBRACKET":
+            return self.parse_list(tokens)
+        if token_type == "LBRACE":
+            return self.parse_dict(tokens)
+        if token_type in ("FSTRING_DQ", "FSTRING_SQ"):
+            raw = tokens[0][1]
+            content = raw[2:-1]
+            parts = []
+            i = 0
+
+            while i < len(content):
+                if content[i] == "{":
+                    expr_start = i + 1
+                    brace_depth = 1
+                    i += 1
+
+                    while i < len(content) and brace_depth > 0:
+                        if content[i] == "{":
+                            brace_depth += 1
+                        elif content[i] == "}":
+                            brace_depth -= 1
+                        i += 1
+
+                    if brace_depth != 0:
+                        raise RuntimeError("Unmatched '{' in f-string")
+
+                    expr_tokens = Lexer(content[expr_start:i - 1]).tokenize()
+                    parts.append(("expr", self.parse_expr(expr_tokens)))
+                else:
+                    j = i
+                    while j < len(content) and content[j] != "{":
+                        j += 1
+                    parts.append(("string", content[i:j]))
+                    i = j
+
+            return ("fstring", parts)
+
+        raise RuntimeError(f"Unexpected token in primary: {tokens[0]}")
+
+    def find_matching(self, tokens, start_pos, open_type, close_type):
+        depth = 0
+        for pos in range(start_pos, len(tokens)):
+            if tokens[pos][0] == open_type:
+                depth += 1
+            elif tokens[pos][0] == close_type:
+                depth -= 1
+                if depth == 0:
+                    return pos
+        raise RuntimeError(f"Expected matching {close_type} for {open_type}")
+
+    def find_top_level_index(self, tokens, token_types):
+        paren_depth = 0
+        bracket_depth = 0
+        brace_depth = 0
+
+        for pos, token in enumerate(tokens):
+            if token[0] == "LPAREN":
+                paren_depth += 1
+            elif token[0] == "RPAREN":
+                paren_depth -= 1
+            elif token[0] == "LBRACKET":
+                bracket_depth += 1
+            elif token[0] == "RBRACKET":
+                bracket_depth -= 1
+            elif token[0] == "LBRACE":
+                brace_depth += 1
+            elif token[0] == "RBRACE":
+                brace_depth -= 1
+            elif token[0] in token_types and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0:
+                return pos
+
+        return None
+
+    def parse_unpack_target(self, tokens):
+        if not tokens:
+            raise RuntimeError("Expected unpack target")
+
+        if tokens[0][0] == "LPAREN":
+            close_pos = self.find_matching(tokens, 0, "LPAREN", "RPAREN")
+            if close_pos == len(tokens) - 1:
+                tokens = tokens[1:close_pos]
+            
+        if tokens[0][0] == "LBRACKET":
+            close_pos = self.find_matching(tokens, 0, "LBRACKET", "RBRACKET")
+            if close_pos == len(tokens) - 1:
+                tokens = tokens[1:close_pos]
+        
+        if tokens[0][0] == "LBRACE":
+            raise RuntimeError("Cannot assign to a dictionary literal")
+
+        parts = self.split_top_level_items(tokens)
+
+        if len(parts) == 1:
+            part = parts[0]
+            if len(part) == 1 and part[0][0] == "IDENT":
+                return ("ident", part[0][1])
+            return self.parse_unpack_target(part)
+
+        return ("tuple", [self.parse_unpack_target(part) for part in parts])
+
     def split_on_top_level_operator(self, tokens, operators):
         pos = 0
         depth = 0
@@ -84,23 +210,6 @@ class Parser:
         
         return pos_cond_word, condition_tokens
 
-    def split_on_last_top_level_dot(self, tokens):
-        depth = 0
-        last_dot = None
-
-        for pos, token in enumerate(tokens):
-            if token[0] == "LPAREN":
-                depth += 1
-            elif token[0] == "RPAREN":
-                depth -= 1
-            elif token[0] == "DOT" and depth == 0:
-                last_dot = pos
-
-        if last_dot is None:
-            return None, None
-
-        return tokens[:last_dot], tokens[last_dot + 1:]
-
     def parse_expr(self, tokens):
         if len(tokens) == 0:
             raise RuntimeError("Unexpected end of expression")
@@ -111,20 +220,6 @@ class Parser:
         left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["+=", "-=", "*=", "/="])
         if operator is not None:
             return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
-
-        if tokens[0][0] == "IDENT" and len(tokens) > 1 and tokens[1][0] == "ASSIGN":
-            return ("assign", tokens[0][1], self.parse_expr(tokens[2:]))
-        
-        # if tokens[0][0] == "PRINT":
-        #     pos = 1
-        #     text_tokens = []
-        #     while pos < len(tokens) and tokens[pos][0] != "RPAREN":
-        #         text_tokens.append(tokens[pos])
-        #         pos += 1
-        #     if pos >= len(tokens) or tokens[pos][0] != "RPAREN":
-        #         raise RuntimeError("Expected closing parenthesis in print statement")
-
-        #     return ("print", self.parse_expr(text_tokens))
 
         if tokens[0][0] == "IMPORT":
             if len(tokens) < 2:
@@ -151,7 +246,7 @@ class Parser:
             if as_name:
                 return ("import", module_name, as_name)
             return ("import", module_name)
-        
+
         if tokens[0][0] == "FROM":
             if len(tokens) < 4:
                 raise RuntimeError("Expected syntax: from <module> import <name>")
@@ -186,21 +281,38 @@ class Parser:
             return ("from_import", module_name, name)
 
         if tokens[0][0] == "FOR":
-            if tokens[1][0] != "IDENT" or tokens[2][0] != "IN":
+            in_pos = self.find_top_level_index(tokens, {"IN"})
+            if in_pos is None or in_pos < 2:
                 raise RuntimeError("Expected syntax: for <var> in <iterable>")
-            var_name = tokens[1][1]
-            iterable_tokens = tokens[3:]
-            return ("for", var_name, self.parse_expr(iterable_tokens))
-        
+            target_tokens = tokens[1:in_pos]
+            iterable_tokens = tokens[in_pos + 1:]
+            if iterable_tokens and iterable_tokens[-1][0] == "COLON":
+                iterable_tokens = iterable_tokens[:-1]
+            if not target_tokens or not iterable_tokens:
+                raise RuntimeError("Expected iterable expression in for statement")
+            return ("for", self.parse_unpack_target(target_tokens), self.parse_expr(iterable_tokens))
+
         if tokens[0][0] == "WHILE":
             condition_tokens = tokens[1:]
+            if condition_tokens and condition_tokens[-1][0] == "COLON":
+                condition_tokens = condition_tokens[:-1]
+            if not condition_tokens:
+                raise RuntimeError("Expected condition expression in while statement")
             return ("while", self.parse_expr(condition_tokens))
 
         if len(tokens) > 3 and tokens[0][0] == "IDENT" and tokens[1][0] == "DOT" and tokens[2][0] == "IDENT" and tokens[3][0] == "ASSIGN":
             obj_name = tokens[0][1]
             attr_name = tokens[2][1]
             value_tokens = tokens[4:]
-            return ("set_attr", obj_name, attr_name, self.parse_expr(value_tokens))
+            return ("set_attr", ("ident", obj_name), attr_name, self.parse_expr(value_tokens))
+
+        assign_pos = self.find_top_level_index(tokens, {"ASSIGN"})
+        if assign_pos is not None:
+            target_tokens = tokens[:assign_pos]
+            value_tokens = tokens[assign_pos + 1:]
+            if not target_tokens or not value_tokens:
+                raise RuntimeError("Expected syntax: <target> = <value>")
+            return ("assign", self.parse_unpack_target(target_tokens), self.parse_expr(value_tokens))
 
         if tokens[0][0] == "DEF" and len(tokens) > 1 and tokens[1][0] == "FUNCTION":
             func_name = tokens[1][1]
@@ -262,154 +374,204 @@ class Parser:
         if operator is not None:   
             return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
 
-        left_tokens, right_tokens = self.split_on_last_top_level_dot(tokens)
-        if left_tokens is not None:
-            left_expr = self.parse_expr(left_tokens)
+        postfix_expr = self.parse_postfix(tokens)
+        if postfix_expr is not None:
+            return postfix_expr
 
-            if not right_tokens:
-                raise RuntimeError("Expected attribute name after '.'")
-
-            if right_tokens[0][0] not in ("IDENT", "FUNCTION"):
-                raise RuntimeError("Expected attribute name after '.'")
-
-            attr_name = right_tokens[0][1]
-
-            if len(right_tokens) > 1 and right_tokens[1][0] == "LPAREN":
-                args = []
-                pos = 2
-                arg_start = pos
-                depth = 0
-
-                while pos < len(right_tokens):
-                    tk = right_tokens[pos]
-                    if tk[0] == "LPAREN":
-                        depth += 1
-                    elif tk[0] == "RPAREN":
-                        if depth == 0:
-                            if pos > arg_start:
-                                args.append(self.parse_expr(right_tokens[arg_start:pos]))
-                            break
-                        depth -= 1
-                    elif tk[0] == "COMMA" and depth == 0:
-                        if pos > arg_start:
-                            args.append(self.parse_expr(right_tokens[arg_start:pos]))
-                        arg_start = pos + 1
-                    pos += 1
-
-                if pos >= len(right_tokens) or right_tokens[pos][0] != "RPAREN":
-                    raise RuntimeError("Expected closing parenthesis in attribute call")
-
-                return ("attr_call", left_expr, attr_name, args)
-
-            if len(right_tokens) == 1:
-                return ("get_attr", left_expr, attr_name)
-
-            raise RuntimeError("Unexpected token sequence after attribute access")
-
-        if tokens[0][0] in ("IDENT", "FUNCTION") and len(tokens) > 1 and tokens[1][0] == "LPAREN":
-            func_name = tokens[0][1]
-            args = []
-            pos = 2
-
-            # Collect tokens for each argument, splitting on top-level commas
-            arg_start = pos
-            depth = 0
-            while pos < len(tokens):
-                tk = tokens[pos]
-                if tk[0] == "LPAREN":
-                    depth += 1
-                elif tk[0] == "RPAREN":
-                    if depth == 0:
-                        # end of arg list
-                        if pos > arg_start:
-                            args.append(self.parse_expr(tokens[arg_start:pos]))
-                        break
-                    depth -= 1
-                elif tk[0] == "COMMA" and depth == 0:
-                    if pos > arg_start:
-                        args.append(self.parse_expr(tokens[arg_start:pos]))
-                    arg_start = pos + 1
-                pos += 1
-
-            if pos >= len(tokens) or tokens[pos][0] != "RPAREN":
-                raise RuntimeError("Expected closing parenthesis in function call")
-
-            return ("call", ("ident", func_name), args)
+        if tokens[0][0] == "LBRACE":
+            return self.parse_dict(tokens)
 
         if tokens[0][0] == "LPAREN":
             return self.parse_paran(tokens)
-        
-        if tokens[0][0] == "IDENT":
-            return ("ident", tokens[0][1])
 
-        if tokens[0][0] == "NUMBER":
-            return ("number", tokens[0][1])
+        return self.parse_primary(tokens)
+    
+    def parse_list(self, tokens):
+        if not tokens or tokens[0][0] != "LBRACKET":
+            raise RuntimeError("Expected list literal")
 
-        if tokens[0][0] == "BOOLEAN":
-            return ("boolean", tokens[0][1] == "True")
-        
-        if tokens[0][0] in ("DOUBLEQUOTE", "SINGLEQUOTE"):
-            return ("string", tokens[0][1][1:-1]) 
-        
-        if tokens[0][0] == "LIST":
-            raw = tokens[0][1]
-            content = raw[1:-1].strip()
-            if not content:
-                return ("list", [])
-            item_tokens = []
-            depth = 0
-            current_item = []
-            for char in content:
-                if char == ',' and depth == 0:
-                    item_tokens.append(current_item)
-                    current_item = []
-                else:
-                    if char == '(':
-                        depth += 1
-                    elif char == ')':
-                        depth -= 1
-                    current_item.append(char)
-            if current_item:
-                item_tokens.append(current_item)
-            
+        close_pos = self.find_matching(tokens, 0, "LBRACKET", "RBRACKET")
+        content_tokens = tokens[1:close_pos]
+
+        elements = []
+        start = 0
+        paren_depth = 0
+        bracket_depth = 0
+        brace_depth = 0
+
+        for pos, token in enumerate(content_tokens):
+            if token[0] == "LPAREN":
+                paren_depth += 1
+            elif token[0] == "RPAREN":
+                paren_depth -= 1
+            elif token[0] == "LBRACKET":
+                bracket_depth += 1
+            elif token[0] == "RBRACKET":
+                bracket_depth -= 1
+            elif token[0] == "LBRACE":
+                brace_depth += 1
+            elif token[0] == "RBRACE":
+                brace_depth -= 1
+            elif token[0] == "COMMA" and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0:
+                if pos > start:
+                    elements.append(self.parse_expr(content_tokens[start:pos]))
+                start = pos + 1
+
+        if start < len(content_tokens):
+            elements.append(self.parse_expr(content_tokens[start:]))
+
+        return ("list", elements)
+
+    def split_top_level_items(self, item_tokens):
             items = []
-            for item in item_tokens:
-                item_str = ''.join(item).strip()
-                if item_str:
-                    tokens = Lexer(item_str).tokenize()
-                    items.append(self.parse_expr(tokens))
-            return ("list", items)
+            start = 0
+            paren_depth = 0
+            bracket_depth = 0
+            brace_depth = 0
 
-        if tokens[0][0] in ("FSTRING_DQ", "FSTRING_SQ"):
-            raw = tokens[0][1]
-            content = raw[2:-1]
-            parts = []
-            i = 0
-            while i < len(content):
-                if content[i] == '{':
-                    expr_start = i + 1
-                    
-                    while i < len(content) and content[i] != '}':
-                        i += 1
+            for pos, token in enumerate(item_tokens):
+                if token[0] == "LPAREN":
+                    paren_depth += 1
+                elif token[0] == "RPAREN":
+                    paren_depth -= 1
+                elif token[0] == "LBRACKET":
+                    bracket_depth += 1
+                elif token[0] == "RBRACKET":
+                    bracket_depth -= 1
+                elif token[0] == "LBRACE":
+                    brace_depth += 1
+                elif token[0] == "RBRACE":
+                    brace_depth -= 1
+                elif token[0] == "COMMA" and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0:
+                    if pos > start:
+                        items.append(item_tokens[start:pos])
+                    start = pos + 1
 
-                    if i == len(content):
-                        raise RuntimeError("Unmatched '{' in f-string")
-                    
-                    expr_tokens = Lexer(content[expr_start:i]).tokenize()
-                    expr_ast = self.parse_expr(expr_tokens)
-                    parts.append(('expr', expr_ast))
+            if start < len(item_tokens):
+                items.append(item_tokens[start:])
 
-                    i = i + 1
+            return [item for item in items if item]
+
+    def parse_dict(self, tokens):
+        if not tokens or tokens[0][0] != "LBRACE":
+            raise RuntimeError("Expected dictionary literal")
+
+        close_pos = self.find_matching(tokens, 0, "LBRACE", "RBRACE")
+        content_tokens = tokens[1:close_pos]
+
+        pairs = []
+        start = 0
+        paren_depth = 0
+        bracket_depth = 0
+        brace_depth = 0
+
+        def add_pair(pair_tokens):
+            colon_pos = None
+            nested_paren = 0
+            nested_bracket = 0
+            nested_brace = 0
+
+            for i, token in enumerate(pair_tokens):
+                if token[0] == "LPAREN":
+                    nested_paren += 1
+                elif token[0] == "RPAREN":
+                    nested_paren -= 1
+                elif token[0] == "LBRACKET":
+                    nested_bracket += 1
+                elif token[0] == "RBRACKET":
+                    nested_bracket -= 1
+                elif token[0] == "LBRACE":
+                    nested_brace += 1
+                elif token[0] == "RBRACE":
+                    nested_brace -= 1
+                elif token[0] == "COLON" and nested_paren == 0 and nested_bracket == 0 and nested_brace == 0:
+                    colon_pos = i
+                    break
+
+            if colon_pos is None:
+                raise RuntimeError("Expected ':' in dictionary pair")
+
+            key_tokens = pair_tokens[:colon_pos]
+            value_tokens = pair_tokens[colon_pos + 1:]
+            pairs.append((self.parse_expr(key_tokens), self.parse_expr(value_tokens)))
+
+        for pos, token in enumerate(content_tokens):
+            if token[0] == "LPAREN":
+                paren_depth += 1
+            elif token[0] == "RPAREN":
+                paren_depth -= 1
+            elif token[0] == "LBRACKET":
+                bracket_depth += 1
+            elif token[0] == "RBRACKET":
+                bracket_depth -= 1
+            elif token[0] == "LBRACE":
+                brace_depth += 1
+            elif token[0] == "RBRACE":
+                brace_depth -= 1
+            elif token[0] == "COMMA" and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0:
+                if pos > start:
+                    add_pair(content_tokens[start:pos])
+                start = pos + 1
+
+        if start < len(content_tokens):
+            add_pair(content_tokens[start:])
+
+        return ("dict", pairs)
+    
+    def parse_postfix(self, tokens):
+        if not tokens:
+            return None
+
+        token_type = tokens[0][0]
+        if token_type not in ("IDENT", "FUNCTION", "NUMBER", "BOOLEAN", "DOUBLEQUOTE", "SINGLEQUOTE", "LPAREN", "LBRACKET", "LBRACE", "FSTRING_DQ", "FSTRING_SQ"):
+            return None
+
+        if token_type in ("IDENT", "FUNCTION", "NUMBER", "BOOLEAN", "DOUBLEQUOTE", "SINGLEQUOTE", "FSTRING_DQ", "FSTRING_SQ"):
+            primary_end = 1
+        elif token_type == "LPAREN":
+            primary_end = self.find_matching(tokens, 0, "LPAREN", "RPAREN") + 1
+        elif token_type == "LBRACKET":
+            primary_end = self.find_matching(tokens, 0, "LBRACKET", "RBRACKET") + 1
+        else:
+            primary_end = self.find_matching(tokens, 0, "LBRACE", "RBRACE") + 1
+
+        expr = self.parse_primary(tokens[:primary_end])
+        remaining_tokens = tokens[primary_end:]
+
+        while remaining_tokens:
+            token = remaining_tokens[0]
+
+            if token[0] == "DOT":
+                if len(remaining_tokens) < 2 or remaining_tokens[1][0] not in ("IDENT", "FUNCTION"):
+                    raise RuntimeError("Expected identifier after '.'")
+                
+                name = remaining_tokens[1][1]
+                
+                if len(remaining_tokens) > 2 and remaining_tokens[2][0] == "LPAREN":
+                    args_end = self.find_matching(remaining_tokens, 2, "LPAREN", "RPAREN")
+                    arg_tokens = remaining_tokens[3:args_end]
+                    args = [self.parse_expr(arg) for arg in self.split_top_level_items(arg_tokens)]
+                    expr = ("attr_call", expr, name, args)
+                    remaining_tokens = remaining_tokens[args_end + 1:]
                 else:
-                    j = i
-                    while j < len(content) and content[j] != '{':
-                        j += 1
-                    parts.append(('string', content[i:j]))
-                    i = j
+                    expr = ("get_attr", expr, name)
+                    remaining_tokens = remaining_tokens[2:]
+            
+            elif token[0] == "LBRACKET":
+                index_end = self.find_matching(remaining_tokens, 0, "LBRACKET", "RBRACKET")
+                index_tokens = remaining_tokens[1:index_end]
+                index_expr = self.parse_expr(index_tokens)
+                expr = ("index", expr, index_expr)
+                remaining_tokens = remaining_tokens[index_end + 1:]
+            
+            elif token[0] == "LPAREN":
+                args_end = self.find_matching(remaining_tokens, 0, "LPAREN", "RPAREN")
+                arg_tokens = remaining_tokens[1:args_end]
+                args = [self.parse_expr(arg) for arg in self.split_top_level_items(arg_tokens)]
+                expr = ("call", expr, args)
+                remaining_tokens = remaining_tokens[args_end + 1:]
 
-            return ("fstring", parts)
-
-        raise RuntimeError(f"Unexpected token: {tokens[0]}")
+        return expr
 
     def parse_paran(self, tokens):
         pos = 1
@@ -438,31 +600,6 @@ class Parser:
         else:
             return self.parse_expr(left_tokens)
 
-    def parse_comparison(self, tokens):
-        pos = 0
-        left_tokens = []
-
-        while pos < len(tokens) and not (tokens[pos][0] == "OP" and tokens[pos][1] in ["<", ">", "<=", ">=", "==", "!="]):
-            left_tokens.append(tokens[pos])
-            pos += 1
-
-        if pos >= len(tokens):
-            raise RuntimeError("Expected operator")
-
-        operator = tokens[pos][1]
-        right_tokens = tokens[pos + 1:]
-        return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
-    
-    def parse_binop(self, tokens):
-        pos = 0
-        left_tokens = []
-        right_tokens = []
-        
-        while pos < len(tokens) and not (tokens[pos][0] == "OP" and tokens[pos][1] in ["+", "-"]):
-            left_tokens.append(tokens[pos])
-            pos += 1
-        
-        if len(left_tokens) == len(tokens):
             pos = 0
             left_tokens = []
             while pos < len(tokens) and not (tokens[pos][0] == "OP" and tokens[pos][1] in ["*", "/"]):

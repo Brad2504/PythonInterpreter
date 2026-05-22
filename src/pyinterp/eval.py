@@ -417,18 +417,31 @@ class Evaluator:
         self.environment[class_name] = cls
         return body_end
         
-    def eval_for_loop(self, var_name, iterable_expr, body_start, body_end):       
+    def eval_for_loop(self, target_expr, iterable_expr, body_start, body_end):       
         iterable = self.eval_expr(iterable_expr)
         if not hasattr(iterable, "__iter__"):
             raise RuntimeError(f"Object of type '{type(iterable).__name__}' is not iterable")
 
+        target_names = list(dict.fromkeys(self._collect_target_names(target_expr)))
+        missing = object()
+        previous_bindings = {
+            name: self.environment.get(name, missing)
+            for name in target_names
+        }
+
         results = []
         for item in iterable:
-            self.environment[var_name] = item
+            self._bind_target(target_expr, item)
             body_results, _ = self.eval_range(body_start, body_end)
             results.extend(body_results)
 
-        del self.environment[var_name]
+        for name in target_names:
+            previous = previous_bindings[name]
+            if previous is missing:
+                self.environment.pop(name, None)
+            else:
+                self.environment[name] = previous
+
         return results
 
     def eval_import(self, module_name, as_name=None):
@@ -470,6 +483,39 @@ class Evaluator:
             return getattr(obj, attr_name)
 
         raise RuntimeError(f"Object of type '{type(obj).__name__}' has no attribute '{attr_name}'")
+
+    def _collect_target_names(self, target_expr):
+        if target_expr[0] == "ident":
+            return [target_expr[1]]
+
+        if target_expr[0] == "tuple":
+            names = []
+            for item in target_expr[1]:
+                names.extend(self._collect_target_names(item))
+            return names
+
+        raise RuntimeError("Expected unpack target")
+
+    def _bind_target(self, target_expr, value):
+        if target_expr[0] == "ident":
+            self.environment[target_expr[1]] = value
+            return
+
+        if target_expr[0] != "tuple":
+            raise RuntimeError("Expected unpack target")
+
+        try:
+            values = list(value)
+        except TypeError:
+            raise RuntimeError("Cannot unpack non-iterable object")
+
+        if len(values) != len(target_expr[1]):
+            raise RuntimeError(
+                f"Expected {len(target_expr[1])} values to unpack but got {len(values)}"
+            )
+
+        for subtarget, subvalue in zip(target_expr[1], values):
+            self._bind_target(subtarget, subvalue)
 
     def eval_set_attr(self, obj_expr, attr_name, value_expr):
         obj = self.eval_expr(obj_expr)
@@ -585,10 +631,8 @@ class Evaluator:
             self.eval_set_attr(expr[1], expr[2], expr[3])
             return None
         elif expr[0] == "assign":
-            var_name = expr[1]
             value = self.eval_expr(expr[2])
-
-            self.environment[var_name] = value
+            self._bind_target(expr[1], value)
             return None
         elif expr[0] == "string":
             return expr[1]
@@ -602,6 +646,33 @@ class Evaluator:
             return ''.join(parts)
         elif expr[0] == "list":
             return [self.eval_expr(item) for item in expr[1]]
+        elif expr[0] == "dict":
+            return {self.eval_expr(key): self.eval_expr(value) for key, value in expr[1]}
+        elif expr[0] == "tuple":
+            return tuple(self.eval_expr(item) for item in expr[1])
+        elif expr[0] == "list_access":
+            list_obj = self.eval_expr(expr[1])
+
+            if len(expr) == 4:
+                start = self.eval_expr(expr[2])
+                end = self.eval_expr(expr[3])
+                try:
+                    return list_obj[start:end]
+                except (IndexError, KeyError, TypeError) as e:
+                    raise RuntimeError(f"Invalid list access: {e}")
+            if len(expr) == 5:
+                start = self.eval_expr(expr[2])
+                end = self.eval_expr(expr[3])
+                step = self.eval_expr(expr[4])
+                try:
+                    return list_obj[start:end:step]
+                except (IndexError, KeyError, TypeError) as e:
+                    raise RuntimeError(f"Invalid list access: {e}")
+            try:
+                index = self.eval_expr(expr[2])
+                return list_obj[index]
+            except (IndexError, KeyError, TypeError) as e:
+                raise RuntimeError(f"Invalid list access: {e}")
         elif expr[0] == "boolean":
             return expr[1]
         # elif expr[0] == "print":

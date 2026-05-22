@@ -66,6 +66,37 @@ class ParserTests(unittest.TestCase):
     def test_invalid_character_raises(self):
         with self.assertRaises(RuntimeError):
             self.parse_expr("1 $ 2")
+
+    def test_tuple_assignment_parses_as_unpack_target(self):
+        self.assertEqual(
+            self.parse_expr("(a, b) = pair"),
+            [
+                (
+                    0,
+                    (
+                        "assign",
+                        ("tuple", [("ident", "a"), ("ident", "b")]),
+                        ("ident", "pair"),
+                    ),
+                )
+            ],
+        )
+
+    def test_for_loop_tuple_target_parses(self):
+        self.assertEqual(
+            self.parse_expr("for a, b in pairs:\n\ta + b"),
+            [
+                (
+                    0,
+                    (
+                        "for",
+                        ("tuple", [("ident", "a"), ("ident", "b")]),
+                        ("ident", "pairs"),
+                    ),
+                ),
+                (1, ("binop", "+", ("ident", "a"), ("ident", "b"))),
+            ],
+        )
     
     def test_nested_parentheses(self):
         self.assertEqual(

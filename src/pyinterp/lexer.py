@@ -11,7 +11,10 @@ class Lexer:
         token_specification = [
             ('NUMBER',   r'\d+(\.\d*)?'),    # Integer or decimal number
             ('DOT',      r'\.'),             # Dot operator for attribute access
-            ('LIST',     r'\[.*?\]'),         # List literals (non-greedy match)
+            ('LBRACKET', r'\['),             # Left bracket for list literals
+            ('RBRACKET', r'\]'),
+            ('LBRACE',   r'\{'),             # Left brace for dict literals
+            ('RBRACE',   r'\}'),             # Right brace for dict literals')
             ('LPAREN',   r'\('),             # Left parenthesis
             ('RPAREN',   r'\)'),             # Right parenthesis
             ('PLUSEQUALS', r'\+='),            # += operator
@@ -23,7 +26,6 @@ class Lexer:
             ('CONDITIONAL', r'\bif\b|\belse\b|\belif\b'),     # Conditional keywords
             ('ASSIGN',   r'='),              # Assignment operator
             ('CLASS',    r'\bclass\b'),          # Class definition keyword
-            # ('PRINT',    r'print\('),        # Print token includes opening parenthesis
             ('FOR'     , r'\bfor\b'),            # For loop keyword
             ('IN'      , r'\bin\b'),             # In keyword for loops
             ('WHILE'   , r'\bwhile\b'),          # While loop keyword

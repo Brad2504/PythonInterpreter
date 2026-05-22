@@ -29,6 +29,7 @@ x = "print('hello')"
 print(lexer(x).tokenize())
 
 rectangle = Rectangle(3, 4)
+rectangle.width = 5
 print(rectangle.area())
 
 nums = np.array([1, 2, 3])
