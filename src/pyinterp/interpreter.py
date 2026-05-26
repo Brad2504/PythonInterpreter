@@ -119,7 +119,7 @@ def main():
             if line.strip() == "exit":
                 break
 
-            if line.strip() == "clear":
+            if line.strip() == "clear" or line.strip() == "clear()":
                 os.system(clear_arg)
                 print("*********************** Python Interpreter, version 1.0, by Brayden Clark ***********************")
                 print("****** Welcome to the Python Interpreter! Type 'exit' to quit, 'clear' to clear the screen ******")

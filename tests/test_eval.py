@@ -108,6 +108,19 @@ class EvaluatorTests(unittest.TestCase):
     def test_string_concatenation_evaluates(self):
         self.assertEqual(self.eval_code('"hello" + \'world\''), "helloworld")
 
+    def test_fstring_with_format_spec_evaluates(self):
+        self.assertEqual(self.eval_code('f"{pi:.4f}"'), "3.1416")
+
+    def test_fstring_with_width_and_precision_format_spec_evaluates(self):
+        self.assertEqual(self.eval_code('f"{pi:3.4f}"'), "3.1416")
+
+    def test_fstring_with_nested_format_spec_expressions(self):
+        self.assertEqual(self.eval_code('f"pi: {pi:{8}.{4}f}"'), "pi:   3.1416")
+
+    def test_fstring_format_spec_with_trailing_dot_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            self.eval_code('f"{pi:30.f}"')
+
 
 if __name__ == "__main__":
     unittest.main()

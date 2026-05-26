@@ -638,11 +638,34 @@ class Evaluator:
             return expr[1]
         elif expr[0] == "fstring":
             parts = []
-            for kind, val in expr[1]:
+            for element in expr[1]:
+                if len(element) == 2:
+                    kind, val = element
+                    format_spec = None
+                else:
+                    kind, val, format_width, format_precision, format_type = element
                 if kind == "string":
                     parts.append(val)
                 elif kind == "expr":
                     parts.append(str(self.eval_expr(val)))
+                elif kind == "format_spec_expr":
+                    if format_width:
+                        width = self.eval_expr(format_width)
+                    else:
+                        width = None
+                    if format_precision:
+                        precision = self.eval_expr(format_precision)
+                    else:
+                        precision = None
+                    format_spec = ""
+                    if width is not None:
+                        format_spec += f"{width}"
+                    if precision is not None:
+                        format_spec += f".{precision}"
+                    if format_type is not None:
+                        format_spec += f"{format_type}"
+                    formatted = format(self.eval_expr(val), format_spec)
+                    parts.append(formatted)
             return ''.join(parts)
         elif expr[0] == "list":
             return [self.eval_expr(item) for item in expr[1]]

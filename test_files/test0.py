@@ -1,5 +1,6 @@
 from pyinterp.lexer import Lexer as lexer
 import numpy as np
+import math
 
 def fact(x):
     if x == 0:
@@ -34,3 +35,5 @@ print(rectangle.area())
 
 nums = np.array([1, 2, 3])
 print(np.sum(nums))
+
+print(PI)

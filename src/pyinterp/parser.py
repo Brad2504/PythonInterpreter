@@ -1,6 +1,8 @@
 # Python Parser
 
 from pyinterp.lexer import Lexer as Lexer
+import math
+import re
 
 class Parser:
     def __init__(self, tokens):
@@ -29,9 +31,6 @@ class Parser:
                 expressions.append((indent, self.parse_expr(line[indent:])))
         return expressions
 
-    def parse_stmt(self, tokens):
-        return self.parse_expr(tokens)
-
     def parse_primary(self, tokens):
         if not tokens:
             raise RuntimeError("Unexpected end of expression")
@@ -42,6 +41,8 @@ class Parser:
             return ("ident", tokens[0][1])
         if token_type == "NUMBER":
             return ("number", tokens[0][1])
+        if token_type == "PI":
+            return ("number", math.pi)
         if token_type == "BOOLEAN":
             return ("boolean", tokens[0][1] == "True")
         if token_type in ("DOUBLEQUOTE", "SINGLEQUOTE"):
@@ -69,9 +70,15 @@ class Parser:
                 if content[i] == "{":
                     expr_start = i + 1
                     brace_depth = 1
+                    format_spec_location = None
+                    inner_parts = []
+
                     i += 1
 
                     while i < len(content) and brace_depth > 0:
+                        if content[i] == ":" and brace_depth == 1 and format_spec_location is None:
+                            format_spec_location = i
+
                         if content[i] == "{":
                             brace_depth += 1
                         elif content[i] == "}":
@@ -81,15 +88,21 @@ class Parser:
                     if brace_depth != 0:
                         raise RuntimeError("Unmatched '{' in f-string")
 
-                    expr_tokens = Lexer(content[expr_start:i - 1]).tokenize()
-                    parts.append(("expr", self.parse_expr(expr_tokens)))
+                    expr_tokens = Lexer(content[expr_start:format_spec_location]).tokenize()
+                    format_spec_tokens = Lexer(content[format_spec_location + 1:i - 1]).tokenize_format_spec() if format_spec_location else None
+
+                    if format_spec_tokens:
+                        width, precision, format_type = self.parse_format_spec(format_spec_tokens)
+                        parts.append(("format_spec_expr", self.parse_expr(expr_tokens), width, precision, format_type))
+                    else:
+                        parts.append(("expr", self.parse_expr(expr_tokens)))
                 else:
                     j = i
                     while j < len(content) and content[j] != "{":
                         j += 1
                     parts.append(("string", content[i:j]))
                     i = j
-
+ 
             return ("fstring", parts)
 
         raise RuntimeError(f"Unexpected token in primary: {tokens[0]}")
@@ -127,6 +140,61 @@ class Parser:
                 return pos
 
         return None
+    
+    def parse_format_spec(self, tokens):
+        if not tokens:
+            raise RuntimeError("Expected format specification in f-string")
+        
+        width = None
+        precision = None
+        format_type = None
+        dot_pos = None
+
+        if tokens[0][0] == "NUMBER":
+            width = ("number", tokens[0][1])
+
+            if len(tokens) > 1 and tokens[1][0] == "DOT":
+                dot_pos = 1
+
+        if tokens[0][0] == "LBRACE":
+            close_pos = self.find_matching(tokens, 0, "LBRACE", "RBRACE")
+            width_tokens = tokens[1:close_pos]
+            width = self.parse_expr(width_tokens)
+
+            if close_pos < len(tokens) - 1 and tokens[close_pos + 1][0] != "DOT":
+                raise RuntimeError("Expected '.' in format specification")
+            
+            if close_pos == len(tokens) - 2 and tokens[-1][0] == "IDENT" and tokens[-1][1] in ["f", "e", "g"]:
+                format_type = tokens[-1][1]
+
+            if close_pos >= len(tokens) - 1 and width is not None:
+                return width, precision, format_type
+
+            dot_pos = close_pos + 1
+            
+            if len(tokens) > 2:
+                raise RuntimeError("Unexpected tokens after format type in format specification")
+        
+        if dot_pos is None and tokens and tokens[0][0] == "DOT":
+            dot_pos = 0
+
+        if dot_pos is not None and tokens[dot_pos + 1][0] == "NUMBER":
+            precision = ("number", tokens[dot_pos + 1][1])
+        if dot_pos is not None and tokens[dot_pos + 1][0] == "LBRACE":
+            close_pos = self.find_matching(tokens, dot_pos + 1, "LBRACE", "RBRACE")
+            precision_tokens = tokens[dot_pos + 2:close_pos]
+            precision = self.parse_expr(precision_tokens)
+        
+        if tokens[-1][0] == "IDENT" and tokens[-1][1] in ["f", "e", "g"]:
+            format_type = tokens[-1][1]
+
+        if width is None and precision is None:
+            raise RuntimeError("Invalid format specification in f-string")
+        
+        if width is not None and dot_pos is not None and precision is None:
+            raise RuntimeError("Expected precision in format specification after '.'")
+        
+        return width, precision, format_type
 
     def parse_unpack_target(self, tokens):
         if not tokens:
@@ -561,7 +629,7 @@ class Parser:
                 index_end = self.find_matching(remaining_tokens, 0, "LBRACKET", "RBRACKET")
                 index_tokens = remaining_tokens[1:index_end]
                 index_expr = self.parse_expr(index_tokens)
-                expr = ("index", expr, index_expr)
+                expr = ("list_access", expr, index_expr)
                 remaining_tokens = remaining_tokens[index_end + 1:]
             
             elif token[0] == "LPAREN":
