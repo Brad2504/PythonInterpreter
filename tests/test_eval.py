@@ -121,6 +121,12 @@ class EvaluatorTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.eval_code('f"{pi:30.f}"')
 
+    def test_fstring_with_nested_literal_and_expression_format_spec(self):
+        self.assertEqual(self.eval_code('num = 2\nf"pi: {pi:1{num}.2}"'), [None, "pi:          3.1"])
+
+    def test_fstring_with_nested_precision_expression_format_spec(self):
+        self.assertEqual(self.eval_code('num = 2\nf"pi: {pi:1{num}.{num}}"'), [None, "pi:          3.1"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,8 +20,10 @@ class Lexer:
             ('PLUSEQUALS', r'\+='),
             ('MINUSEQUALS', r'-='),
             ('STAREQUALS', r'\*='),
+            ('PERCENTEQUALS', r'%='),
+            ('FLOORDIVEQUALS', r'//='),
             ('SLASHEQUALS', r'/='),
-            ('OP',       r'==|!=|<=|>=|[+\-*/<>]|and|or'),
+            ('OP', r'\*\*|//|==|!=|<=|>=|:=|[+\-*/%<>]=?|and|or|not'),
             ('COLON',    r':'),
             ('BOOLEAN',   r'\bTrue\b|\bFalse\b'),
             ('PI',       r'\bpi\b|\bPI\b'),
@@ -73,8 +75,10 @@ class Lexer:
             ('PLUSEQUALS', r'\+='),            # += operator
             ('MINUSEQUALS', r'-='),           # -= operator
             ('STAREQUALS', r'\*='),           # *= operator
+            ('PERCENTEQUALS', r'%='),         # %= operator
+            ('FLOORDIVEQUALS', r'//='),      # //= operator
             ('SLASHEQUALS', r'/='),           # /= operator
-            ('OP',       r'==|!=|<=|>=|[+\-*/<>]|and|or'),  # Operators
+            ('OP',       r'\*\*|//|==|!=|<=|>=|:=|[+\-*/%<>]=?|and|or|not'),  # Operators
             ('COLON',    r':'),              # Colon
             ('CONDITIONAL', r'\bif\b|\belse\b|\belif\b'),     # Conditional keywords
             ('ASSIGN',   r'='),              # Assignment operator
@@ -112,7 +116,7 @@ class Lexer:
                 continue  # Ignore whitespace
             elif kind == 'MISMATCH':
                 raise RuntimeError(f'Unexpected character: {value}')
-            elif kind in ('OP', 'LPAREN', 'RPAREN', 'NEWLINE', 'IDENT', 'CONDITIONAL', 'COMMENT', 'COLON', 'TAB', 'ASSIGN', 'FUNCTION', 'DEF', 'RETURN', 'COMMA', 'PRINT', 'DOUBLEQUOTE', 'SINGLEQUOTE', 'PLUSEQUALS', 'MINUSEQUALS', 'STAREQUALS', 'SLASHEQUALS', 'BOOLEAN', 'DOT', 'AS', 'CLASS', 'PI', 'FOR', 'IN', 'WHILE', 'IMPORT', 'FROM'):
+            elif kind in ('OP', 'LPAREN', 'RPAREN', 'NEWLINE', 'IDENT', 'CONDITIONAL', 'COMMENT', 'COLON', 'TAB', 'ASSIGN', 'FUNCTION', 'DEF', 'RETURN', 'COMMA', 'PRINT', 'DOUBLEQUOTE', 'SINGLEQUOTE', 'PLUSEQUALS', 'MINUSEQUALS', 'STAREQUALS', 'PERCENTEQUALS', 'FLOORDIVEQUALS', 'SLASHEQUALS', 'BOOLEAN', 'DOT', 'AS', 'CLASS', 'PI', 'FOR', 'IN', 'WHILE', 'IMPORT', 'FROM'):
                 pass  # Keep as string
             self.tokens.append((kind, value))
         return self.tokens

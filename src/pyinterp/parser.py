@@ -145,54 +145,60 @@ class Parser:
         if not tokens:
             raise RuntimeError("Expected format specification in f-string")
         
-        width = None
-        precision = None
+        width = []
+        precision = []
         format_type = None
         dot_pos = None
-
-        if tokens[0][0] == "NUMBER":
-            width = ("number", tokens[0][1])
-
-            if len(tokens) > 1 and tokens[1][0] == "DOT":
-                dot_pos = 1
-
-        if tokens[0][0] == "LBRACE":
-            close_pos = self.find_matching(tokens, 0, "LBRACE", "RBRACE")
-            width_tokens = tokens[1:close_pos]
-            width = self.parse_expr(width_tokens)
-
-            if close_pos < len(tokens) - 1 and tokens[close_pos + 1][0] != "DOT":
-                raise RuntimeError("Expected '.' in format specification")
-            
-            if close_pos == len(tokens) - 2 and tokens[-1][0] == "IDENT" and tokens[-1][1] in ["f", "e", "g"]:
-                format_type = tokens[-1][1]
-
-            if close_pos >= len(tokens) - 1 and width is not None:
-                return width, precision, format_type
-
-            dot_pos = close_pos + 1
-            
-            if len(tokens) > 2:
-                raise RuntimeError("Unexpected tokens after format type in format specification")
+        pos = 0
         
-        if dot_pos is None and tokens and tokens[0][0] == "DOT":
-            dot_pos = 0
+        while pos < len(tokens) and tokens[pos][0] in ("NUMBER", "LBRACE"):
+            if tokens[pos][0] == "NUMBER":
+                width.append(("number", tokens[pos][1]))
 
-        if dot_pos is not None and tokens[dot_pos + 1][0] == "NUMBER":
-            precision = ("number", tokens[dot_pos + 1][1])
-        if dot_pos is not None and tokens[dot_pos + 1][0] == "LBRACE":
-            close_pos = self.find_matching(tokens, dot_pos + 1, "LBRACE", "RBRACE")
-            precision_tokens = tokens[dot_pos + 2:close_pos]
-            precision = self.parse_expr(precision_tokens)
-        
-        if tokens[-1][0] == "IDENT" and tokens[-1][1] in ["f", "e", "g"]:
-            format_type = tokens[-1][1]
+                if len(tokens) > pos + 1 and tokens[pos + 1][0] == "DOT":
+                    dot_pos = pos + 1
+                    pos = pos + 2
+                    break
+                
+                pos += 1
 
-        if width is None and precision is None:
-            raise RuntimeError("Invalid format specification in f-string")
+            elif tokens[pos][0] == "LBRACE" or (len(tokens) > pos + 1 and tokens[pos + 1][0] == "LBRACE"):
+                close_pos = self.find_matching(tokens, pos, "LBRACE", "RBRACE")
+                width_tokens = tokens[pos + 1:close_pos]
+                width.append(self.parse_expr(width_tokens))
+                
+                if close_pos == len(tokens) - 2 and tokens[-1][0] == "IDENT" and tokens[-1][1] in ["f", "e", "g"]:
+                    format_type = tokens[-1][1]
+
+                if close_pos >= len(tokens) - 1 and width is not None:
+                    return width, precision, format_type
+
+                pos = close_pos + 1
         
-        if width is not None and dot_pos is not None and precision is None:
-            raise RuntimeError("Expected precision in format specification after '.'")
+        if dot_pos is None and tokens and tokens[pos][0] == "DOT":
+            dot_pos = pos
+            pos += 1
+        
+        if dot_pos is not None and (pos >= len(tokens) or tokens[pos][0] not in ("NUMBER", "LBRACE")):
+            raise RuntimeError("Expected precision specifier after '.' in format specification")
+
+        while pos < len(tokens) and tokens[pos][0] in ("NUMBER", "LBRACE") and dot_pos is not None:
+            if tokens[pos][0] == "NUMBER":
+                precision.append(("number", tokens[pos][1]))
+                pos = dot_pos + 2
+                continue
+            if pos < len(tokens) and tokens[pos][0] == "LBRACE":
+                close_pos = self.find_matching(tokens, dot_pos + 1, "LBRACE", "RBRACE")
+                precision_tokens = tokens[dot_pos + 2:close_pos]
+                precision.append(self.parse_expr(precision_tokens))
+                pos = close_pos + 1
+
+        if pos < len(tokens) and tokens[pos][0] == "IDENT" and tokens[pos][1] in ["f", "e", "g"]:
+             format_type = tokens[pos][1]
+             pos += 1
+        
+        if pos != len(tokens):
+            raise RuntimeError("Unexpected tokens in format specification")
         
         return width, precision, format_type
 
@@ -232,7 +238,7 @@ class Parser:
                 depth += 1
             elif token[0] == "RPAREN":
                 depth -= 1
-            elif (token[0] in ["OP", "PLUSEQUALS", "MINUSEQUALS", "STAREQUALS", "SLASHEQUALS"]) and (token[1] in operators) and (depth == 0):
+            elif (token[1] in operators) and (depth == 0):
                 return tokens[:pos], token[1], tokens[pos + 1:]
             pos += 1
         return None, None, None
@@ -285,7 +291,7 @@ class Parser:
         if tokens[0][0] == "RPAREN":
             raise RuntimeError("Unexpected token: RPAREN")
         
-        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["+=", "-=", "*=", "/="])
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["+=", "-=", "*=", "/=", "//=", "%="])
         if operator is not None:
             return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
 
@@ -438,9 +444,23 @@ class Parser:
         if operator is not None:
             return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
 
-        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["*", "/"])
-        if operator is not None:   
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["*", "/", "//", "%"])
+        if operator is not None:
             return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
+        
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["**"])
+        if operator is not None:
+            return ("binop", operator, self.parse_expr(left_tokens), self.parse_expr(right_tokens))
+
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, [":="])
+        if operator is not None:
+            if len(left_tokens) != 1 or left_tokens[0][0] != "IDENT":
+                raise RuntimeError("Invalid target for assignment expression")
+            return ("walrus", ("ident", left_tokens[0][1]), self.parse_expr(right_tokens))
+        
+        left_tokens, operator, right_tokens = self.split_on_top_level_operator(tokens, ["in"])
+        if operator is not None:
+            return ("binop", "in", self.parse_expr(left_tokens), self.parse_expr(right_tokens))
 
         postfix_expr = self.parse_postfix(tokens)
         if postfix_expr is not None:

@@ -546,11 +546,20 @@ class Evaluator:
             if expr[1] is None:
                 raise Return(None)
             value = self.eval_expr(expr[1])
-            raise Return(value)
+            raise Return(value)    
+        elif expr[0] == "walrus":
+            if not isinstance(expr[1], tuple) or expr[1][0] != "ident":
+                raise RuntimeError("Left-hand side of walrus operator must be a variable")
+            var_name = expr[1][1]
+            value = self.eval_expr(expr[2])
+            self.environment[var_name] = value
+            return value
         elif expr[0] == "binop":
             op = expr[1]
             left = self.eval_expr(expr[2])
             right = self.eval_expr(expr[3])
+            if op == "**":
+                return left ** right
             if op == "+":
                 return left + right
             if op == "+=":
@@ -583,6 +592,8 @@ class Evaluator:
                 return self.environment[var_name]
             elif op == "/":
                 return left / right
+            elif op == "//":
+                return left // right
             elif op == "/=":
                 if not isinstance(expr[2], tuple) or expr[2][0] != "ident":
                     raise RuntimeError("Left-hand side of /= must be a variable")
@@ -590,6 +601,14 @@ class Evaluator:
                 if var_name not in self.environment:
                     raise RuntimeError(f"Undefined variable: {var_name}")
                 self.environment[var_name] /= right
+                return self.environment[var_name]
+            elif op == "//=":
+                if not isinstance(expr[2], tuple) or expr[2][0] != "ident":
+                    raise RuntimeError("Left-hand side of //= must be a variable")
+                var_name = expr[2][1]
+                if var_name not in self.environment:
+                    raise RuntimeError(f"Undefined variable: {var_name}")
+                self.environment[var_name] //= right
                 return self.environment[var_name]
             elif op == "==":
                 return left == right
@@ -607,6 +626,18 @@ class Evaluator:
                 return left and right
             elif op == "or":
                 return left or right
+            elif op == "%":
+                return left % right
+            elif op == "%=":
+                if not isinstance(expr[2], tuple) or expr[2][0] != "ident":
+                    raise RuntimeError("Left-hand side of %= must be a variable")
+                var_name = expr[2][1]
+                if var_name not in self.environment:
+                    raise RuntimeError(f"Undefined variable: {var_name}")
+                self.environment[var_name] %= right
+                return self.environment[var_name]
+            elif op == "in":
+                return left in right
         elif expr[0] == "inlinecond":
             condition = self.eval_expr(expr[1])
             if condition:
@@ -637,6 +668,18 @@ class Evaluator:
         elif expr[0] == "string":
             return expr[1]
         elif expr[0] == "fstring":
+            def render_format_parts(parts):
+                if parts is None:
+                    return None
+
+                rendered = []
+                for part in parts:
+                    if isinstance(part, tuple) and len(part) == 2 and part[0] == "number":
+                        rendered.append(str(part[1]))
+                    else:
+                        rendered.append(str(self.eval_expr(part)))
+                return "".join(rendered)
+
             parts = []
             for element in expr[1]:
                 if len(element) == 2:
@@ -649,14 +692,8 @@ class Evaluator:
                 elif kind == "expr":
                     parts.append(str(self.eval_expr(val)))
                 elif kind == "format_spec_expr":
-                    if format_width:
-                        width = self.eval_expr(format_width)
-                    else:
-                        width = None
-                    if format_precision:
-                        precision = self.eval_expr(format_precision)
-                    else:
-                        precision = None
+                    width = render_format_parts(format_width) if format_width else None
+                    precision = render_format_parts(format_precision) if format_precision else None
                     format_spec = ""
                     if width is not None:
                         format_spec += f"{width}"
@@ -698,10 +735,6 @@ class Evaluator:
                 raise RuntimeError(f"Invalid list access: {e}")
         elif expr[0] == "boolean":
             return expr[1]
-        # elif expr[0] == "print":
-        #     value = self.eval_expr(expr[1])
-        #     print(value)
-        #     return None
         else:
             raise RuntimeError(f"Unknown expression type: {expr[0]}")
             
